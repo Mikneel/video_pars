@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VideoStream — Видеоплатформа с парсером</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+/* ─── RESET & VARS ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0a0a0f;
+  --surface:  #111118;
+  --card:     #16161f;
+  --border:   #1e1e2e;
+  --accent:   #e63946;
+  --accent2:  #ff6b35;
+  --text:     #e8e8f0;
+  --muted:    #6b6b80;
+  --green:    #2dc653;
+  --font-h:   'Bebas Neue', sans-serif;
+  --font-b:   'Manrope', sans-serif;
+  --radius:   12px;
+  --trans:    .2s ease;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-b);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ─── NOISE OVERLAY ─── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none; z-index: 0; opacity: .5;
+}
+
+/* ─── HEADER ─── */
+header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,10,15,.9);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  display: flex; align-items: center; gap: 2rem;
+  height: 64px;
+}
+.logo {
+  font-family: var(--font-h);
+  font-size: 2rem;
+  letter-spacing: .05em;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+}
+.logo span { -webkit-text-fill-color: var(--text); }
+
+.search-wrap {
+  flex: 1; max-width: 480px;
+  position: relative;
+}
+.search-wrap input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-b);
+  font-size: .9rem;
+  padding: .6rem 1rem .6rem 2.6rem;
+  outline: none;
+  transition: border var(--trans);
+}
+.search-wrap input:focus { border-color: var(--accent); }
+.search-icon {
+  position: absolute; left: .75rem; top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted); pointer-events: none;
+}
+.nav-tabs {
+  display: flex; gap: .25rem; margin-left: auto;
+}
+.nav-tab {
+  padding: .4rem .9rem;
+  border-radius: 6px;
+  font-size: .85rem; font-weight: 600;
+  cursor: pointer;
+  border: none; background: transparent;
+  color: var(--muted);
+  transition: all var(--trans);
+}
+.nav-tab.active, .nav-tab:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.nav-tab.active { color: var(--accent); }
+
+/* ─── LAYOUT ─── */
+.main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 2rem;
+}
+
+/* ─── SECTION TITLE ─── */
+.sec-title {
+  font-family: var(--font-h);
+  font-size: 1.8rem;
+  letter-spacing: .05em;
+  margin-bottom: 1.25rem;
+  display: flex; align-items: center; gap: .75rem;
+}
+.sec-title .badge {
+  font-family: var(--font-b);
+  font-size: .7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .1em;
+  background: var(--accent);
+  color: #fff;
+  padding: .2rem .5rem;
+  border-radius: 4px;
+}
+
+/* ─── VIDEO GRID ─── */
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.video-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform var(--trans), border-color var(--trans), box-shadow var(--trans);
+  animation: fadeIn .4s ease both;
+}
+.video-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--accent);
+  box-shadow: 0 12px 40px rgba(230,57,70,.15);
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.thumb-wrap {
+  position: relative;
+  aspect-ratio: 16/9;
+  overflow: hidden;
+  background: var(--surface);
+}
+.thumb-wrap img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transition: transform .4s ease;
+}
+.video-card:hover .thumb-wrap img { transform: scale(1.05); }
+.thumb-placeholder {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 3rem; color: var(--muted);
+}
+.duration-badge {
+  position: absolute; bottom: .4rem; right: .4rem;
+  background: rgba(0,0,0,.8);
+  color: #fff; font-size: .7rem; font-weight: 700;
+  padding: .1rem .4rem; border-radius: 4px;
+}
+.play-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(230,57,70,.0);
+  transition: background var(--trans);
+}
+.video-card:hover .play-overlay { background: rgba(230,57,70,.15); }
+.play-icon {
+  width: 48px; height: 48px;
+  background: rgba(230,57,70,.9);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transform: scale(.8);
+  transition: opacity var(--trans), transform var(--trans);
+}
+.video-card:hover .play-icon { opacity: 1; transform: scale(1); }
+.play-icon svg { margin-left: 3px; }
+
+.card-info { padding: .85rem; }
+.card-title {
+  font-size: .9rem; font-weight: 600;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: .4rem;
+}
+.card-meta {
+  font-size: .75rem; color: var(--muted);
+  display: flex; gap: .75rem; align-items: center;
+}
+.card-meta .dot { width: 3px; height: 3px; background: var(--muted); border-radius: 50%; }
+.card-del {
+  margin-left: auto;
+  background: none; border: none;
+  color: var(--muted); cursor: pointer;
+  padding: .25rem; border-radius: 4px;
+  transition: color var(--trans), background var(--trans);
+  font-size: .85rem;
+}
+.card-del:hover { color: var(--accent); background: rgba(230,57,70,.1); }
+
+/* ─── EMPTY STATE ─── */
+.empty {
+  grid-column: 1/-1;
+  text-align: center; padding: 4rem 2rem;
+  color: var(--muted);
+}
+.empty-icon { font-size: 4rem; margin-bottom: 1rem; }
+.empty h3 { font-family: var(--font-h); font-size: 1.5rem; color: var(--text); margin-bottom: .5rem; }
+
+/* ─── SIDEBAR ─── */
+.sidebar { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.panel-head {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-h);
+  font-size: 1.1rem;
+  letter-spacing: .05em;
+  display: flex; align-items: center; gap: .5rem;
+}
+.panel-body { padding: 1.25rem; display: flex; flex-direction: column; gap: .75rem; }
+
+/* ─── INPUTS ─── */
+.field label {
+  display: block; font-size: .75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--muted); margin-bottom: .35rem;
+}
+.field input, .field select {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-b);
+  font-size: .875rem;
+  padding: .6rem .9rem;
+  outline: none;
+  transition: border var(--trans);
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+.field input::placeholder { color: var(--muted); }
+
+/* ─── BUTTONS ─── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  padding: .65rem 1.25rem;
+  border: none; border-radius: 8px;
+  font-family: var(--font-b); font-size: .875rem; font-weight: 700;
+  cursor: pointer;
+  transition: all var(--trans);
+  width: 100%;
+}
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #c1121f);
+  color: #fff;
+  box-shadow: 0 4px 20px rgba(230,57,70,.3);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 28px rgba(230,57,70,.4); }
+.btn-primary:active { transform: translateY(0); }
+.btn-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+
+/* ─── PROGRESS / LOG ─── */
+.parse-log {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .75rem;
+  font-size: .78rem;
+  font-family: 'Courier New', monospace;
+  color: var(--green);
+  max-height: 140px;
+  overflow-y: auto;
+  display: none;
+}
+.parse-log.visible { display: block; }
+.log-line { margin-bottom: .25rem; }
+.log-line.err { color: var(--accent); }
+.log-line.info { color: var(--muted); }
+
+/* ─── STATS ─── */
+.stats-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: .75rem; padding: 1.25rem;
+}
+.stat-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .75rem;
+  text-align: center;
+}
+.stat-num {
+  font-family: var(--font-h);
+  font-size: 1.8rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.stat-label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+
+/* ─── MODAL PLAYER ─── */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.85);
+  backdrop-filter: blur(8px);
+  z-index: 200;
+  display: none; align-items: center; justify-content: center;
+  padding: 1rem;
+}
+.modal-backdrop.open { display: flex; animation: fadeIn .2s ease; }
+.modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 100%; max-width: 860px;
+  overflow: hidden;
+  animation: slideUp .3s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.modal-header {
+  padding: 1rem 1.25rem;
+  display: flex; align-items: flex-start; gap: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.modal-title { font-weight: 700; font-size: 1rem; flex: 1; line-height: 1.4; }
+.modal-close {
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); border-radius: 6px;
+  width: 32px; height: 32px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; flex-shrink: 0;
+  transition: all var(--trans);
+}
+.modal-close:hover { border-color: var(--accent); color: var(--accent); }
+.video-player-wrap {
+  position: relative;
+  aspect-ratio: 16/9;
+  background: #000;
+}
+.video-player-wrap video,
+.video-player-wrap iframe {
+  width: 100%; height: 100%;
+  border: none;
+}
+.modal-info { padding: 1rem 1.25rem; }
+.modal-desc {
+  font-size: .85rem; color: var(--muted);
+  line-height: 1.6; margin-bottom: .75rem;
+}
+.modal-actions { display: flex; gap: .75rem; }
+.modal-actions .btn { width: auto; font-size: .8rem; padding: .5rem 1rem; }
+
+/* ─── TOAST ─── */
+.toast-container {
+  position: fixed; bottom: 1.5rem; right: 1.5rem;
+  display: flex; flex-direction: column; gap: .5rem;
+  z-index: 300;
+}
+.toast {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .75rem 1.1rem;
+  font-size: .85rem;
+  display: flex; align-items: center; gap: .6rem;
+  animation: slideRight .3s ease;
+  min-width: 240px;
+}
+@keyframes slideRight {
+  from { transform: translateX(60px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.toast.success { border-left: 3px solid var(--green); }
+.toast.error   { border-left: 3px solid var(--accent); }
+.toast.info    { border-left: 3px solid #4cc9f0; }
+
+/* ─── TAB CONTENT ─── */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ─── PAGINATION ─── */
+.pagination {
+  display: flex; gap: .5rem; justify-content: center;
+  margin-top: 1.5rem;
+}
+.page-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  width: 36px; height: 36px;
+  cursor: pointer; font-size: .85rem;
+  transition: all var(--trans);
+  display: flex; align-items: center; justify-content: center;
+}
+.page-btn:hover, .page-btn.active {
+  border-color: var(--accent); color: var(--accent);
+}
+
+/* ─── RESPONSIVE ─── */
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .sidebar { order: -1; }
+  header { padding: 0 1rem; }
+  .logo { font-size: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<header>
+  <div class="logo">VIDEO<span>STREAM</span></div>
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input id="searchInput" type="text" placeholder="Поиск по видео, автору..."/>
+  </div>
+  <nav class="nav-tabs">
+    <button class="nav-tab active" onclick="switchTab('catalog')">📺 Каталог</button>
+    <button class="nav-tab" onclick="switchTab('parser')">⚙️ Парсер</button>
+  </nav>
+</header>
+
+<!-- ─── MAIN ─── -->
+<div class="main">
+
+  <!-- ─── LEFT: CATALOG ─── -->
+  <div>
+
+    <!-- CATALOG TAB -->
+    <div id="tab-catalog" class="tab-content active">
+      <div class="sec-title">
+        Видеотека <span class="badge" id="totalBadge">0</span>
+      </div>
+      <div class="video-grid" id="videoGrid">
+        <div class="empty">
+          <div class="empty-icon">📭</div>
+          <h3>Пока пусто</h3>
+          <p>Добавьте видео через парсер в правой панели</p>
+        </div>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+    <!-- PARSER TAB (mobile) -->
+    <div id="tab-parser" class="tab-content"></div>
+
+  </div>
+
+  <!-- ─── SIDEBAR ─── -->
+  <aside class="sidebar" id="sidebarContent">
+
+    <!-- STATS -->
+    <div class="panel">
+      <div class="panel-head">📊 Статистика</div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-num" id="statTotal">0</div>
+          <div class="stat-label">Видео</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" id="statParsed">0</div>
+          <div class="stat-label">Спарсено</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SINGLE PARSER -->
+    <div class="panel">
+      <div class="panel-head">🔗 Парсинг по ссылке</div>
+      <div class="panel-body">
+        <div class="field">
+          <label>URL страницы с видео</label>
+          <input id="singleUrl" type="url" placeholder="https://example.com/video/123"/>
+        </div>
+        <button class="btn btn-primary" onclick="parseSingle()" id="btnSingle">
+          ▶ Спарсить видео
+        </button>
+        <div class="parse-log" id="singleLog"></div>
+      </div>
+    </div>
+
+    <!-- BULK PARSER -->
+    <div class="panel">
+      <div class="panel-head">📦 Массовый парсинг</div>
+      <div class="panel-body">
+        <div class="field">
+          <label>URL каталога / списка</label>
+          <input id="bulkUrl" type="url" placeholder="https://example.com/videos"/>
+        </div>
+        <div class="field">
+          <label>Макс. видео</label>
+          <select id="bulkMax">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="parseBulk()" id="btnBulk">
+          ⚡ Массовый парсинг
+        </button>
+        <div class="parse-log" id="bulkLog"></div>
+      </div>
+    </div>
+
+    <!-- MANUAL ADD -->
+    <div class="panel">
+      <div class="panel-head">✏️ Добавить вручную</div>
+      <div class="panel-body">
+        <div class="field">
+          <label>Название</label>
+          <input id="manTitle" type="text" placeholder="Название видео"/>
+        </div>
+        <div class="field">
+          <label>URL видео (mp4 / m3u8)</label>
+          <input id="manVideoUrl" type="url" placeholder="https://.../video.mp4"/>
+        </div>
+        <div class="field">
+          <label>Превью (опционально)</label>
+          <input id="manThumb" type="url" placeholder="https://.../thumb.jpg"/>
+        </div>
+        <button class="btn btn-secondary" onclick="addManual()">
+          ➕ Добавить
+        </button>
+      </div>
+    </div>
+
+  </aside>
+</div>
+
+<!-- ─── MODAL PLAYER ─── -->
+<div class="modal-backdrop" id="playerModal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">—</div>
+      <button class="modal-close" onclick="closePlayer()">✕</button>
+    </div>
+    <div class="video-player-wrap" id="playerWrap"></div>
+    <div class="modal-info">
+      <div class="modal-desc" id="modalDesc"></div>
+      <div class="modal-actions">
+        <a id="modalSource" href="#" target="_blank" class="btn btn-secondary">🔗 Источник</a>
+        <button class="btn btn-primary" onclick="closePlayer()" style="width:auto">✕ Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TOAST ─── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ─────────────────────────────────────────────
+// CONFIG — поменяй на свой адрес бэкенда
+// ─────────────────────────────────────────────
+const API = "http://localhost:5000/api";
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let currentPage = 1;
+let totalVideos = 0;
+let searchQuery = "";
+let parsedCount = 0;
+
+// ─────────────────────────────────────────────
+// TABS
+// ─────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+  event.currentTarget.classList.add("active");
+  document.getElementById("tab-" + name).classList.add("active");
+}
+
+// ─────────────────────────────────────────────
+// LOAD VIDEOS
+// ─────────────────────────────────────────────
+async function loadVideos(page = 1) {
+  currentPage = page;
+  const url = `${API}/videos?page=${page}&per_page=12${searchQuery ? "&q=" + encodeURIComponent(searchQuery) : ""}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    totalVideos = data.total;
+    renderGrid(data.videos);
+    renderPagination(data.total, page, 12);
+    updateStats(data.total);
+  } catch {
+    renderGrid([]);
+    toast("Бэкенд недоступен. Запустите parser_backend.py", "error");
+  }
+}
+
+function renderGrid(videos) {
+  const grid = document.getElementById("videoGrid");
+  if (!videos.length) {
+    grid.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">🎬</div>
+        <h3>${searchQuery ? "Ничего не найдено" : "Видео не добавлены"}</h3>
+        <p>${searchQuery ? "Попробуйте другой запрос" : "Воспользуйтесь парсером справа"}</p>
+      </div>`;
+    return;
+  }
+  grid.innerHTML = videos.map((v, i) => `
+    <div class="video-card" style="animation-delay:${i*0.05}s" onclick="openPlayer(${v.id})">
+      <div class="thumb-wrap">
+        ${v.thumbnail
+          ? `<img src="${v.thumbnail}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=thumb-placeholder>🎬</div>'">`
+          : '<div class="thumb-placeholder">🎬</div>'}
+        <div class="play-overlay">
+          <div class="play-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+          </div>
+        </div>
+        ${v.duration ? `<div class="duration-badge">${v.duration}</div>` : ""}
+      </div>
+      <div class="card-info">
+        <div class="card-title">${escHtml(v.title)}</div>
+        <div class="card-meta">
+          <span>${escHtml(v.author || "—")}</span>
+          <span class="dot"></span>
+          <span>${timeAgo(v.added_at)}</span>
+          <button class="card-del" title="Удалить" onclick="deleteVideo(event,${v.id})">✕</button>
+        </div>
+      </div>
+    </div>`).join("");
+}
+
+function renderPagination(total, page, perPage) {
+  const pages = Math.ceil(total / perPage);
+  const p = document.getElementById("pagination");
+  if (pages <= 1) { p.innerHTML = ""; return; }
+  let html = "";
+  for (let i = 1; i <= pages; i++) {
+    html += `<button class="page-btn ${i===page?"active":""}" onclick="loadVideos(${i})">${i}</button>`;
+  }
+  p.innerHTML = html;
+}
+
+function updateStats(total) {
+  document.getElementById("statTotal").textContent = total;
+  document.getElementById("statParsed").textContent = parsedCount;
+  document.getElementById("totalBadge").textContent = total;
+}
+
+// ─────────────────────────────────────────────
+// SEARCH
+// ─────────────────────────────────────────────
+let searchTimer;
+document.getElementById("searchInput").addEventListener("input", e => {
+  clearTimeout(searchTimer);
+  searchQuery = e.target.value.trim();
+  searchTimer = setTimeout(() => loadVideos(1), 400);
+});
+
+// ─────────────────────────────────────────────
+// PARSE SINGLE
+// ─────────────────────────────────────────────
+async function parseSingle() {
+  const url = document.getElementById("singleUrl").value.trim();
+  if (!url) { toast("Введите URL", "error"); return; }
+  const log = document.getElementById("singleLog");
+  const btn = document.getElementById("btnSingle");
+  log.classList.add("visible");
+  log.innerHTML = "";
+  btn.disabled = true;
+  addLog(log, "info", `⏳ Парсинг: ${url}`);
+  try {
+    const res = await fetch(`${API}/parse`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (data.error) {
+      addLog(log, "err", "❌ " + data.error);
+      toast(data.error, "error");
+    } else {
+      addLog(log, "", `✅ Добавлено: ${data.title}`);
+      addLog(log, "info", `🎬 Видео: ${data.video_url ? "найдено" : "не найдено"}`);
+      parsedCount++;
+      toast("Видео успешно добавлено!", "success");
+      loadVideos(1);
+      document.getElementById("singleUrl").value = "";
+    }
+  } catch {
+    addLog(log, "err", "❌ Бэкенд недоступен");
+    toast("Запустите parser_backend.py", "error");
+  }
+  btn.disabled = false;
+}
+
+// ─────────────────────────────────────────────
+// PARSE BULK
+// ─────────────────────────────────────────────
+async function parseBulk() {
+  const url = document.getElementById("bulkUrl").value.trim();
+  const max = document.getElementById("bulkMax").value;
+  if (!url) { toast("Введите URL каталога", "error"); return; }
+  const log = document.getElementById("bulkLog");
+  const btn = document.getElementById("btnBulk");
+  log.classList.add("visible");
+  log.innerHTML = "";
+  btn.disabled = true;
+  addLog(log, "info", `⏳ Сканирование каталога...`);
+  try {
+    const res = await fetch(`${API}/parse-bulk`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({url, max_items: parseInt(max)})
+    });
+    const data = await res.json();
+    addLog(log, "", `✅ Добавлено: ${data.parsed} видео`);
+    parsedCount += data.parsed;
+    toast(`Готово! Добавлено ${data.parsed} видео`, "success");
+    loadVideos(1);
+  } catch {
+    addLog(log, "err", "❌ Бэкенд недоступен");
+    toast("Запустите parser_backend.py", "error");
+  }
+  btn.disabled = false;
+}
+
+// ─────────────────────────────────────────────
+// MANUAL ADD (demo without backend)
+// ─────────────────────────────────────────────
+async function addManual() {
+  const title = document.getElementById("manTitle").value.trim();
+  const videoUrl = document.getElementById("manVideoUrl").value.trim();
+  const thumbnail = document.getElementById("manThumb").value.trim();
+  if (!title || !videoUrl) { toast("Заполните название и URL видео", "error"); return; }
+  try {
+    const res = await fetch(`${API}/parse`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({url: videoUrl})
+    });
+    // If backend available, try to save; else show error gracefully
+  } catch {}
+  // For demo: add to local display
+  toast("Видео добавлено (демо-режим)", "info");
+  document.getElementById("manTitle").value = "";
+  document.getElementById("manVideoUrl").value = "";
+  document.getElementById("manThumb").value = "";
+}
+
+// ─────────────────────────────────────────────
+// PLAYER
+// ─────────────────────────────────────────────
+async function openPlayer(id) {
+  try {
+    const res = await fetch(`${API}/videos/${id}`);
+    const v = await res.json();
+    document.getElementById("modalTitle").textContent = v.title;
+    document.getElementById("modalDesc").textContent = v.description || "Нет описания";
+    document.getElementById("modalSource").href = v.source_url || "#";
+    const wrap = document.getElementById("playerWrap");
+    if (v.video_url) {
+      if (v.video_url.includes(".m3u8")) {
+        // HLS — нужен hls.js для полной поддержки
+        wrap.innerHTML = `<video controls autoplay style="width:100%;height:100%;background:#000">
+          <source src="${v.video_url}" type="application/x-mpegURL">
+          Ваш браузер не поддерживает HLS
+        </video>`;
+      } else if (v.video_url.includes(".mp4") || v.video_url.match(/\.(webm|ogg)/)) {
+        wrap.innerHTML = `<video controls autoplay style="width:100%;height:100%;background:#000">
+          <source src="${v.video_url}">
+        </video>`;
+      } else {
+        // embed/iframe
+        wrap.innerHTML = `<iframe src="${v.video_url}" allowfullscreen allow="autoplay"></iframe>`;
+      }
+    } else {
+      wrap.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1rem;background:#000;color:#6b6b80;font-family:Manrope,sans-serif">
+        <span style="font-size:3rem">🔗</span>
+        <span>Прямая ссылка не найдена</span>
+        <a href="${v.source_url}" target="_blank" style="color:#e63946;font-size:.85rem">Открыть источник →</a>
+      </div>`;
+    }
+    document.getElementById("playerModal").classList.add("open");
+  } catch {
+    toast("Не удалось загрузить видео", "error");
+  }
+}
+
+function closePlayer() {
+  document.getElementById("playerModal").classList.remove("open");
+  document.getElementById("playerWrap").innerHTML = "";
+}
+function closeModal(e) {
+  if (e.target.id === "playerModal") closePlayer();
+}
+
+// ─────────────────────────────────────────────
+// DELETE
+// ─────────────────────────────────────────────
+async function deleteVideo(e, id) {
+  e.stopPropagation();
+  if (!confirm("Удалить видео?")) return;
+  try {
+    await fetch(`${API}/videos/${id}`, {method: "DELETE"});
+    toast("Удалено", "info");
+    loadVideos(currentPage);
+  } catch {
+    toast("Ошибка удаления", "error");
+  }
+}
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+function addLog(el, type, msg) {
+  el.innerHTML += `<div class="log-line ${type}">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function toast(msg, type="info") {
+  const c = document.getElementById("toastContainer");
+  const icons = {success:"✅", error:"❌", info:"ℹ️"};
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type]||"•"}</span><span>${msg}</span>`;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+
+function escHtml(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function timeAgo(dt) {
+  if (!dt) return "";
+  const d = new Date(dt), now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return "только что";
+  if (diff < 3600) return Math.floor(diff/60) + " мин назад";
+  if (diff < 86400) return Math.floor(diff/3600) + " ч назад";
+  return Math.floor(diff/86400) + " дн назад";
+}
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+loadVideos();
+</script>
+</body>
+</html>
